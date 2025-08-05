@@ -2,17 +2,19 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 const { verifyJWT, verifyRoles } = require('../middleware/verifyJWT');
+const validate = require('../middleware/validate');
+const { createUserSchema, updateUserSchema } = require('../validation/schemas');
 
-// Allow admins to get all users, but also allow general fetching for things like teacher lists
+// General route, no validation needed for GET
 router.get('/', verifyJWT, userController.getAllUsers);
 
-// Admin-only routes for CUD
+// Admin-only routes
 router.use(verifyJWT, verifyRoles('Admin'));
 
-router.post('/', userController.createUser);
+router.post('/', validate(createUserSchema), userController.createUser);
 router.patch('/:id/status', userController.updateUserStatus);
 router.route('/:id')
-    .put(userController.updateUser)
+    .put(validate(updateUserSchema), userController.updateUser)
     .delete(userController.deleteUser);
 
 module.exports = router;
