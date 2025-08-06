@@ -19,9 +19,9 @@ const User = require('./models/User'); // Make sure the path to your User model 
 dotenv.config();
 
 // --- START CUSTOMIZATION ---
-const ADMIN_EMAIL = 'sabithasan2008@gmail.com';
-const ADMIN_PASSWORD = 'ujjwalop'; // Choose a strong password
-const ADMIN_FULLNAME = 'Sabit A';
+const ADMIN_EMAIL = 'admin@123.com';
+const ADMIN_PASSWORD = 'admin'; // Choose a strong password
+const ADMIN_FULLNAME = 'Admin';
 // --- END CUSTOMIZATION ---
 
 const seedAdmin = async () => {

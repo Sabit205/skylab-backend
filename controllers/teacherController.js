@@ -2,20 +2,40 @@ const User = require('../models/User');
 const Schedule = require('../models/Schedule');
 const Attendance = require('../models/Attendance');
 
-// Define the school week days here for consistency across functions
 const days = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
+const getDayOfWeek = () => new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date()).toLowerCase();
 
-/**
- * @desc    Get a teacher's processed weekly schedule.
- *          This single, robust function powers both the "My Schedule" page and the "Attendance" eligibility check.
- * @route   GET /api/teacher/my-schedule
- * @access  Private (Teacher)
- */
-exports.getMySchedule = async (req, res) => {
-    const teacherId = req.userInfo.id; // From verifyJWT middleware
+// --- THIS FUNCTION IS BEING RESTORED ---
+// @desc    Get the teacher's first period class for the current day
+// @route   GET /api/teacher/first-period-class-today
+// @access  Private (Teacher)
+exports.getFirstPeriodClassToday = async (req, res) => {
+    const teacherId = req.userInfo.id;
+    const day = getDayOfWeek();
+    const queryField = `schedule.${day}`;
 
     try {
-        // Find all schedule documents where the teacher is assigned on any of the school days.
+        const scheduleDoc = await Schedule.findOne({
+            [queryField]: { $elemMatch: { period: 1, teacher: teacherId } }
+        }).populate('classId', 'name');
+
+        if (scheduleDoc) {
+            res.json({ class: { classId: scheduleDoc.classId._id, className: scheduleDoc.classId.name } });
+        } else {
+            res.json({ class: null });
+        }
+    } catch (error) {
+        console.error("Error in getFirstPeriodClassToday:", error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Get a teacher's processed weekly schedule.
+// @route   GET /api/teacher/my-schedule
+// @access  Private (Teacher)
+exports.getMySchedule = async (req, res) => {
+    const teacherId = req.userInfo.id;
+    try {
         const rawSchedules = await Schedule.find({
             $or: [
                 { 'schedule.saturday.teacher': teacherId },
@@ -25,26 +45,18 @@ exports.getMySchedule = async (req, res) => {
                 { 'schedule.wednesday.teacher': teacherId },
                 { 'schedule.thursday.teacher': teacherId },
             ]
-        }).populate('classId', 'name'); // Populate the class name for display
+        }).populate('classId', 'name');
 
-        // Process the raw database documents into a simple, flat array for the frontend.
-        // This makes the frontend logic much cleaner and less error-prone.
         const processedSchedule = [];
-
         for (const classSchedule of rawSchedules) {
-            // Safety check to ensure the class document exists
             if (classSchedule && classSchedule.classId) {
                 for (const day of days) {
                     if (classSchedule.schedule?.[day]) {
                         for (const period of classSchedule.schedule[day]) {
-                            // Check if the period has a teacher assigned and if it matches the current user
                             if (period.teacher && period.teacher.toString() === teacherId) {
                                 processedSchedule.push({
-                                    day: day,
-                                    period: period.period,
-                                    subject: period.subject,
-                                    classId: classSchedule.classId._id,
-                                    className: classSchedule.classId.name,
+                                    day: day, period: period.period, subject: period.subject,
+                                    classId: classSchedule.classId._id, className: classSchedule.classId.name,
                                 });
                             }
                         }
@@ -52,53 +64,35 @@ exports.getMySchedule = async (req, res) => {
                 }
             }
         }
-        
-        // Send the clean, easy-to-use array to the frontend
         res.json(processedSchedule);
-
     } catch (error) {
         console.error("Error in getMySchedule:", error);
         res.status(500).json({ message: 'Server Error: Could not retrieve schedule.' });
     }
 };
 
-/**
- * @desc    Get students of a specific class.
- *          Note: This is a simplified implementation. A production app would have a proper
- *          student enrollment collection linking students to classes.
- * @route   GET /api/teacher/class-students/:classId
- * @access  Private (Teacher)
- */
+// --- The rest of the controller remains the same ---
 exports.getClassStudents = async (req, res) => {
     const { classId } = req.params;
     try {
-        // For this project, we assume all students could be in any class.
         const students = await User.find({ role: 'Student' }).select('fullName indexNumber');
         res.json(students);
     } catch (error) {
-        console.error("Error in getClassStudents:", error);
-        res.status(500).json({ message: 'Server Error: Could not retrieve students.' });
+        res.status(500).json({ message: 'Server Error' });
     }
 };
 
-/**
- * @desc    Check if attendance for a class on a specific date has already been taken.
- * @route   GET /api/teacher/attendance-status/:classId/:date
- * @access  Private (Teacher)
- */
 exports.getAttendanceStatus = async (req, res) => {
     const { classId, date } = req.params;
     try {
         const startOfDay = new Date(date);
-        startOfDay.setUTCHours(0, 0, 0, 0); // Use UTC hours for consistency
-
+        startOfDay.setUTCHours(0, 0, 0, 0);
         const endOfDay = new Date(date);
         endOfDay.setUTCHours(23, 59, 59, 999);
-
         const attendance = await Attendance.findOne({
             classId,
             date: { $gte: startOfDay, $lte: endOfDay },
-        }).populate('records.studentId', 'fullName indexNumber'); // Populate student details for the history view
+        }).populate('records.studentId', 'fullName indexNumber');
         
         if (attendance) {
             res.json({ taken: true, data: attendance });
@@ -106,38 +100,23 @@ exports.getAttendanceStatus = async (req, res) => {
             res.json({ taken: false, data: null });
         }
     } catch (error) {
-        console.error("Error in getAttendanceStatus:", error);
-        res.status(500).json({ message: 'Server Error: Could not check attendance status.' });
+        res.status(500).json({ message: 'Server Error' });
     }
 };
 
-/**
- * @desc    Submit new attendance records for a class.
- * @route   POST /api/teacher/attendance
- * @access  Private (Teacher)
- */
 exports.submitAttendance = async (req, res) => {
     const teacherId = req.userInfo.id;
     const { classId, date, records } = req.body;
     try {
         const startOfDay = new Date(date);
-        startOfDay.setUTCHours(0, 0, 0, 0); // Store date at the beginning of the day in UTC
-
-        const newAttendance = new Attendance({
-            date: startOfDay,
-            classId,
-            teacherId,
-            records,
-        });
-        
+        startOfDay.setUTCHours(0, 0, 0, 0);
+        const newAttendance = new Attendance({ date: startOfDay, classId, teacherId, records });
         await newAttendance.save();
         res.status(201).json({ message: 'Attendance submitted successfully.' });
     } catch (error) {
-        // Handle the unique index violation error (attendance already taken)
         if (error.code === 11000) {
             return res.status(409).json({ message: 'Attendance for this class has already been taken today.' });
         }
-        console.error("Error in submitAttendance:", error);
-        res.status(500).json({ message: 'Server Error: Could not submit attendance.', error: error.message });
+        res.status(500).json({ message: 'Server Error', error: error.message });
     }
 };
