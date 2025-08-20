@@ -5,13 +5,16 @@ const { verifyJWT, verifyRoles } = require('../middleware/verifyJWT');
 const validate = require('../middleware/validate');
 const { createUserSchema, updateUserSchema } = require('../validation/schemas');
 
-// General route, no validation needed for GET
 router.get('/', verifyJWT, userController.getAllUsers);
 
-// Admin-only routes
 router.use(verifyJWT, verifyRoles('Admin'));
 
 router.post('/', validate(createUserSchema), userController.createUser);
+
+// --- NEW ROUTES FOR GUARDIAN CODE MANAGEMENT ---
+router.post('/:id/generate-code', userController.generateGuardianCode);
+router.delete('/:id/revoke-code', userController.revokeGuardianCode);
+
 router.patch('/:id/status', userController.updateUserStatus);
 router.route('/:id')
     .put(validate(updateUserSchema), userController.updateUser)

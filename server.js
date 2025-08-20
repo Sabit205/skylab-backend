@@ -26,24 +26,23 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 const corsOptions = {
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
         if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true, // Allow cookies to be sent
-    optionsSuccessStatus: 200 // For legacy browser support
+    credentials: true,
+    optionsSuccessStatus: 200 
 };
 app.use(cors(corsOptions));
 
-// Request logger (useful for debugging in development)
+// Request logger
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev'));
 }
 
-// Rate limiting to prevent brute-force password attacks on auth routes
+// Rate limiting to prevent brute-force attacks on auth routes
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit each IP to 100 requests per window
@@ -52,23 +51,18 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again after 15 minutes',
 });
 app.use('/auth', limiter);
+app.use('/api/guardian/login', limiter); // Also protect guardian login
 
-// Built-in middleware for parsing JSON and urlencoded form data
+// Built-in middleware
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-// Middleware for parsing cookies, essential for refresh tokens
 app.use(cookieParser());
+app.use(express.urlencoded({ extended: false }));
 
 
 // --- Uptime Monitoring and Welcome Routes ---
-
-// Root route to confirm the API is running for uptime monitors
 app.get('/', (req, res) => {
     res.status(200).json({ message: 'Welcome to the School Dashboard API! Server is operational.' });
 });
-
-// Specific health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Backend is running.' });
 });
@@ -83,13 +77,13 @@ app.use('/announcements', require('./routes/announcementRoutes'));
 app.use('/finance', require('./routes/financeRoutes'));
 app.use('/schedules', require('./routes/scheduleRoutes'));
 app.use('/fees', require('./routes/feeRoutes'));
+app.use('/subjects', require('./routes/subjectRoutes'));
 app.use('/api/teacher', require('./routes/teacherRoutes'));
 app.use('/api/student', require('./routes/studentRoutes'));
+app.use('/api/guardian', require('./routes/guardianRoutes'));
 
 
 // --- Error Handling ---
-
-// Custom error handling middleware (must be last in the middleware chain)
 app.use(errorHandler);
 
 

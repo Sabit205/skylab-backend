@@ -15,8 +15,12 @@ const verifyJWT = (req, res, next) => {
         (err, decoded) => {
             if (err) return res.status(403).json({ message: 'Forbidden' });
             
-            // CRITICAL FIX: Attach the full UserInfo object to the request.
-            // This makes req.userInfo.id, req.userInfo.roles, etc. available everywhere.
+            // --- THE DEFINITIVE FIX ---
+            // Safety check: Ensure the decoded token has the expected UserInfo structure.
+            if (!decoded.UserInfo || !decoded.UserInfo.roles) {
+                return res.status(403).json({ message: 'Forbidden: Invalid token type' });
+            }
+            
             req.userInfo = decoded.UserInfo;
             req.roles = decoded.UserInfo.roles;
             next();

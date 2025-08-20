@@ -1,7 +1,57 @@
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
-// @desc Create a new user (by Admin)
+/**
+ * @desc    Generate or update a guardian access code for a student
+ * @route   POST /users/:id/generate-code
+ * @access  Private (Admin)
+ */
+exports.generateGuardianCode = async (req, res) => {
+    try {
+        const student = await User.findById(req.params.id);
+        if (!student || student.role !== 'Student') {
+            return res.status(404).json({ message: 'Student not found.' });
+        }
+        
+        // Generate a simple, random 6-character alphanumeric code
+        const accessCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+        
+        student.guardianAccessCode = accessCode;
+        await student.save();
+
+        res.json({ message: `New access code generated successfully.`, accessCode: student.guardianAccessCode });
+    } catch (error) {
+        res.status(500).json({ message: 'Error generating code', error: error.message });
+    }
+};
+
+/**
+ * @desc    Revoke (delete) a guardian access code for a student
+ * @route   DELETE /users/:id/revoke-code
+ * @access  Private (Admin)
+ */
+exports.revokeGuardianCode = async (req, res) => {
+    try {
+        const student = await User.findById(req.params.id);
+        if (!student || student.role !== 'Student') {
+            return res.status(404).json({ message: 'Student not found.' });
+        }
+        
+        student.guardianAccessCode = undefined; // Using undefined will remove the field from the document upon saving
+        await student.save();
+
+        res.json({ message: 'Access code revoked successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error revoking code', error: error.message });
+    }
+};
+
+/**
+ * @desc    Create a new user (by Admin)
+ * @route   POST /users
+ * @access  Private (Admin)
+ */
 exports.createUser = async (req, res) => {
     const { fullName, email, indexNumber, password, role, class: classId } = req.body;
     
@@ -36,7 +86,11 @@ exports.createUser = async (req, res) => {
     }
 };
 
-// @desc Get all users with filtering, searching, and pagination
+/**
+ * @desc    Get all users with filtering, searching, and pagination
+ * @route   GET /users
+ * @access  Private (Admin)
+ */
 exports.getAllUsers = async (req, res) => {
     try {
         const { page = 1, limit = 10, role, search, fields } = req.query;
@@ -53,7 +107,7 @@ exports.getAllUsers = async (req, res) => {
         const selectFields = fields ? fields.split(',').join(' ') : '-password';
 
         const users = await User.find(query)
-            .populate('class', 'name') // Populate class name for display in user table
+            .populate('class', 'name')
             .select(selectFields)
             .limit(limit * 1)
             .skip((page - 1) * limit)
@@ -72,14 +126,17 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-
-// @desc Update a user
+/**
+ * @desc    Update a user
+ * @route   PUT /users/:id
+ * @access  Private (Admin)
+ */
 exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
         const updates = req.body;
 
-        // Don't allow password to be updated this way for security, should be a separate "reset password" flow
+        // Prevent password from being updated via this general endpoint for security
         delete updates.password;
 
         const updatedUser = await User.findByIdAndUpdate(id, updates, { new: true });
@@ -90,18 +147,26 @@ exports.updateUser = async (req, res) => {
     }
 };
 
-// @desc Delete a user
+/**
+ * @desc    Delete a user
+ * @route   DELETE /users/:id
+ * @access  Private (Admin)
+ */
 exports.deleteUser = async (req, res) => {
     try {
         const user = await User.findByIdAndDelete(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
         res.json({ message: 'User deleted successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: 'User deleted successfully' });
     }
 };
 
-// @desc Update user status (Approve/Reject)
+/**
+ * @desc    Update user status (Approve/Pending)
+ * @route   PATCH /users/:id/status
+ * @access  Private (Admin)
+ */
 exports.updateUserStatus = async (req, res) => {
     const { status } = req.body;
     if (!status || !['Approved', 'Pending'].includes(status)) {
